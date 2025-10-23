@@ -1,6 +1,7 @@
-![Wazuh + TheHive SOC Lab for Beginners](assets/banner.png)
+<img width="1536" height="1024" alt="ChatGPT Image Oct 23, 2025, 10_45_04 AM (1)" src="https://github.com/user-attachments/assets/29cad623-bb2f-4c2c-a81e-7d8768d333c4" />
 
-# 🧠 Beginner-Friendly SOC Lab — Wazuh + TheHive Integration 🛡️💚
+
+# 🧠  SOC Lab — Wazuh + TheHive Integration Using Docker 🛡️💚
 
 > “When alerts buzz, TheHive listens 🐝⚡ — your first step into SOC automation.”
 
@@ -107,4 +108,5 @@ Integration automates alert forwarding — a mini SOC in action ⚡
 
 Created by Pepe (Akhil R.)
 🛡️Cybersecurity Engineer | EC-Council Certified SOC Analyst🔍
+
 💬 “Every log tells a story — listen carefully, and you’ll find the intruder.” 👾
