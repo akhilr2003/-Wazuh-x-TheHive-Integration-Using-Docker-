@@ -1,4 +1,5 @@
-![Wazuh + TheHive SOC Lab for Beginners](assets/banner.png)
+<img width="1536" height="1024" alt="ChatGPT Image Oct 23, 2025, 10_45_04 AM (1)" src="https://github.com/user-attachments/assets/99031ada-a491-4795-885b-2dbe1332df75" />
+
 
 # 🧠 Beginner-Friendly SOC Lab — Wazuh + TheHive Integration 🛡️💚
 
