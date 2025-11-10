@@ -1,0 +1,307 @@
+ custom cat thehive-alerts.py 
+#!/usr/bin/env python3
+import json, sys, requests, os
+
+THEHIVE_URL = os.environ.get("THEHIVE_URL", "http://THEHIVE_IP_OR_HOST:9000")
+API_KEY     = os.environ.get("THEHIVE_API_KEY")
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# Read alert JSON: argv[1] (file path from Wazuh) OR stdin (manual tests)
+def read_alert():
+    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
+        with open(sys.argv[1], "r") as f:
+            return json.load(f)
+    return json.load(sys.stdin)
+
+alert = read_alert()
+
+# Build payload
+severity = int(alert.get('rule', {}).get('level', 3))
+if severity < 1: severity = 1
+if severity > 4: severity = 4  # TheHive 5 expects 1–4
+
+payload = {
+  "title": f"Wazuh alert - {alert.get('rule', {}).get('description', 'No description')}",
+  "source": "wazuh",
+  "sourceRef": f"wazuh-{int(os.times().elapsed)}",
+  "severity": severity,
+  "type": "wazuh_alert",
+  "date": int(alert.get('@timestamp', 0)) if isinstance(alert.get('@timestamp', 0), int) else None,
+  "tags": ["wazuh"],
+  "observables": [o for o in [
+      {"dataType": "ip", "data": alert.get('srcip')} if alert.get('srcip') else None,
+      {"dataType": "ip", "data": alert.get('dstip')} if alert.get('dstip') else None
+  ] if o],
+  "description": json.dumps(alert)
+}
+
+r = requests.post(f"{THEHIVE_URL}/api/v1/alert", headers=headers, data=json.dumps(payload), timeout=15)
+print(r.status_code, r.text)
+   _________________________________________________________
+   
+   ➜  integrations cat custom-thehive
+#!/bin/sh
+# Wazuh passes the alert JSON file path as $1
+ALERT_FILE="$1"
+
+# Prefer Wazuh's embedded Python, fallback to system Python
+if [ -x /var/ossec/framework/python/bin/python3 ]; then
+  PY="/var/ossec/framework/python/bin/python3"
+else
+  PY="/usr/bin/python3"
+fi
+
+# Your Python sender script
+SCRIPT="/var/ossec/integrations/custom/thehive-alerts.py"
+
+# Set Hive connection here (read by the Python via env)
+THEHIVE_URL="http://192.168.50.98:9000"
+THEHIVE_API_KEY="vt3vY35UGasjwbCHuOYO06fUIUqKMGlk"
+
+# Feed the alert JSON to Python via stdin
+cat "$ALERT_FILE" | THEHIVE_URL="$THEHIVE_URL" THEHIVE_API_KEY="$THEHIVE_API_KEY" "$PY" "$SCRIPT"
+
+------------------------------------------------------------------------------------------------
+
+➜  etc cat ossec.conf
+<!--
+  Wazuh - Manager - Default configuration for Ubuntu 24.04
+  https://documentation.wazuh.com
+-->
+
+<ossec_config>
+
+  <!-- GLOBAL SETTINGS -->
+  <global>
+    <jsonout_output>yes</jsonout_output>
+    <alerts_log>yes</alerts_log>
+    <logall>no</logall>
+    <logall_json>no</logall_json>
+    <email_notification>no</email_notification>
+    <smtp_server>smtp.example.wazuh.com</smtp_server>
+    <email_from>wazuh@example.wazuh.com</email_from>
+    <email_to>recipient@example.wazuh.com</email_to>
+    <email_maxperhour>12</email_maxperhour>
+    <email_log_source>alerts.log</email_log_source>
+    <agents_disconnection_time>15m</agents_disconnection_time>
+    <agents_disconnection_alert_time>0</agents_disconnection_alert_time>
+    <update_check>yes</update_check>
+    <white_list>127.0.0.1</white_list>
+    <white_list>^localhost.localdomain$</white_list>
+    <white_list>127.0.0.53</white_list>
+  </global>
+
+ <integration>
+  <name>custom-thehive</name>
+  <level>4</level>
+  <alert_format>json</alert_format>
+</integration>
+
+
+  <!-- ALERT SETTINGS -->
+  <alerts>
+    <log_alert_level>3</log_alert_level>
+    <email_alert_level>12</email_alert_level>
+  </alerts>
+
+  <!-- LOGGING -->
+  <logging>
+    <log_format>plain</log_format>
+  </logging>
+
+  <!-- REMOTE -->
+  <remote>
+    <connection>secure</connection>
+    <port>1514</port>
+    <protocol>tcp</protocol>
+    <queue_size>131072</queue_size>
+  </remote>
+
+  <!-- ROOTCHECK -->
+  <rootcheck>
+    <disabled>no</disabled>
+    <check_files>yes</check_files>
+    <check_trojans>yes</check_trojans>
+    <check_dev>yes</check_dev>
+    <check_sys>yes</check_sys>
+    <check_pids>yes</check_pids>
+    <check_ports>yes</check_ports>
+    <check_if>yes</check_if>
+    <frequency>43200</frequency>
+    <rootkit_files>etc/rootcheck/rootkit_files.txt</rootkit_files>
+    <rootkit_trojans>etc/rootcheck/rootkit_trojans.txt</rootkit_trojans>
+    <skip_nfs>yes</skip_nfs>
+    <ignore>/var/lib/containerd</ignore>
+    <ignore>/var/lib/docker/overlay2</ignore>
+  </rootcheck>
+
+  <!-- CIS-CAT -->
+  <wodle name="cis-cat">
+    <disabled>yes</disabled>
+    <timeout>1800</timeout>
+    <interval>1d</interval>
+    <java_path>wodles/java</java_path>
+    <ciscat_path>wodles/ciscat</ciscat_path>
+  </wodle>
+
+  <!-- OSQUERY -->
+  <wodle name="osquery">
+    <disabled>yes</disabled>
+    <run_daemon>yes</run_daemon>
+    <log_path>/var/log/osquery/osqueryd.results.log</log_path>
+    <config_path>/etc/osquery/osquery.conf</config_path>
+    <add_labels>yes</add_labels>
+  </wodle>
+
+  <!-- SYSTEM INVENTORY -->
+  <wodle name="syscollector">
+    <disabled>no</disabled>
+    <interval>1h</interval>
+    <scan_on_start>yes</scan_on_start>
+    <hardware>yes</hardware>
+    <os>yes</os>
+    <network>yes</network>
+    <packages>yes</packages>
+    <ports all="yes">yes</ports>
+    <processes>yes</processes>
+    <users>yes</users>
+    <groups>yes</groups>
+    <services>yes</services>
+    <browser_extensions>yes</browser_extensions>
+    <synchronization>
+      <max_eps>10</max_eps>
+    </synchronization>
+  </wodle>
+
+  <!-- SCA -->
+  <sca>
+    <enabled>yes</enabled>
+    <scan_on_start>yes</scan_on_start>
+    <interval>12h</interval>
+    <skip_nfs>yes</skip_nfs>
+  </sca>
+
+  <!-- VULNERABILITY DETECTION -->
+  <vulnerability-detection>
+    <enabled>yes</enabled>
+    <index-status>yes</index-status>
+    <feed-update-interval>60m</feed-update-interval>
+  </vulnerability-detection>
+
+  <!-- INDEXER -->
+  <indexer>
+    <enabled>yes</enabled>
+    <hosts>
+      <host>https://127.0.0.1:9200</host>
+    </hosts>
+    <ssl>
+      <certificate_authorities>
+        <ca>/etc/filebeat/certs/root-ca.pem</ca>
+      </certificate_authorities>
+      <certificate>/etc/filebeat/certs/wazuh-server.pem</certificate>
+      <key>/etc/filebeat/certs/wazuh-server-key.pem</key>
+    </ssl>
+  </indexer>
+
+  <!-- FILE INTEGRITY MONITORING -->
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>43200</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <alert_new_files>yes</alert_new_files>
+    <auto_ignore frequency="10" timeframe="3600">no</auto_ignore>
+    <directories>/etc,/usr/bin,/usr/sbin</directories>
+    <directories>/bin,/sbin,/boot</directories>
+    <ignore>/etc/mtab</ignore>
+    <ignore>/etc/hosts.deny</ignore>
+    <ignore>/etc/mail/statistics</ignore>
+    <ignore>/etc/random-seed</ignore>
+    <ignore>/etc/random.seed</ignore>
+    <ignore>/etc/adjtime</ignore>
+    <ignore>/etc/httpd/logs</ignore>
+    <ignore>/etc/utmpx</ignore>
+    <ignore>/etc/wtmpx</ignore>
+    <ignore>/etc/cups/certs</ignore>
+    <ignore>/etc/dumpdates</ignore>
+    <ignore>/etc/svc/volatile</ignore>
+    <ignore type="sregex">.log$|.swp$</ignore>
+    <nodiff>/etc/ssl/private.key</nodiff>
+    <skip_nfs>yes</skip_nfs>
+    <skip_dev>yes</skip_dev>
+    <skip_proc>yes</skip_proc>
+    <skip_sys>yes</skip_sys>
+    <process_priority>10</process_priority>
+    <max_eps>50</max_eps>
+    <synchronization>
+      <enabled>yes</enabled>
+      <interval>5m</interval>
+      <max_eps>10</max_eps>
+    </synchronization>
+  </syscheck>
+
+  <!-- COMMANDS (active response) -->
+  <command>
+    <name>disable-account</name>
+    <executable>disable-account</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <command>
+    <name>restart-wazuh</name>
+    <executable>restart-wazuh</executable>
+  </command>
+
+  <command>
+    <name>firewall-drop</name>
+    <executable>firewall-drop</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <command>
+    <name>host-deny</name>
+    <executable>host-deny</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <command>
+    <name>route-null</name>
+    <executable>route-null</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <command>
+    <name>win_route-null</name>
+    <executable>route-null.exe</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <command>
+    <name>netsh</name>
+    <executable>netsh.exe</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <!-- LOCALFILE -->
+  <localfile>
+    <log_format>journald</log_format>
+    <location>journald</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/ossec/logs/active-responses.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/dpkg.log</location>
+  </localfile>
+
+</ossec_config>
+----------------------------------------------------------------------------
+   
+   
