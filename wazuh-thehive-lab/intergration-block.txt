@@ -1,0 +1,5 @@
+<integration>
+  <name>custom-thehive</name>
+  <level>4</level>
+  <alert_format>json</alert_format>
+</integration>

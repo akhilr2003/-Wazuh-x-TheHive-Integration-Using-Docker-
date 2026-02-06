@@ -1,0 +1,20 @@
+#!/bin/sh
+# Wazuh passes the alert JSON file path as $1
+ALERT_FILE="$1"
+
+# Prefer Wazuh's embedded Python, fallback to system Python
+if [ -x /var/ossec/framework/python/bin/python3 ]; then
+  PY="/var/ossec/framework/python/bin/python3"
+else
+  PY="/usr/bin/python3"
+fi
+
+# Your Python sender script
+SCRIPT="/var/ossec/integrations/custom/thehive-alerts.py"
+
+# Set Hive connection here (read by the Python via env)
+THEHIVE_URL="wazuh url"
+THEHIVE_API_KEY="your api key"
+
+# Feed the alert JSON to Python via stdin
+cat "$ALERT_FILE" | THEHIVE_URL="$THEHIVE_URL" THEHIVE_API_KEY="$THEHIVE_API_KEY" "$PY" "$SCRIPT"
